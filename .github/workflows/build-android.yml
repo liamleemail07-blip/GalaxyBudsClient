@@ -1,0 +1,58 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install .NET Android workload
+        run: dotnet workload install android
+
+      - name: Install Android SDK dependencies
+        run: >
+          dotnet build GalaxyBudsClient.Android/GalaxyBudsClient.Android.csproj
+          -t:InstallAndroidDependencies
+          -f net10.0-android36.1
+          -p:AcceptAndroidSDKLicenses=True
+          -p:IsAndroid=true
+
+      - name: Generate signing keystore
+        run: >
+          keytool -genkeypair -v
+          -keystore release.jks
+          -keyalg RSA -keysize 2048 -validity 10000
+          -alias galaxybudsclient
+          -storepass android123 -keypass android123
+          -dname "CN=GalaxyBudsClient, OU=Dev, O=Self, L=NA, ST=NA, C=US"
+
+      - name: Build signed APK
+        run: >
+          dotnet publish GalaxyBudsClient.Android/GalaxyBudsClient.Android.csproj
+          -f net10.0-android36.1
+          -c Release
+          -p:AndroidPackageFormats=apk
+          -p:IsAndroid=true
+          -p:NoDemo=true
+          -p:NotDebuggable=true
+          -p:EmbedAssembliesIntoApk=true
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore=${{ github.workspace }}/release.jks
+          -p:AndroidSigningKeyAlias=galaxybudsclient
+          -p:AndroidSigningKeyPass=android123
+          -p:AndroidSigningStorePass=android123
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalaxyBudsClient-Android-APK
+          path: GalaxyBudsClient.Android/bin/Release/net10.0-android36.1/**/*.apk
